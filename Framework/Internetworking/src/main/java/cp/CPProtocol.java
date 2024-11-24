@@ -123,7 +123,7 @@ public class CPProtocol extends Protocol {
                     }
                 }
             } catch (SocketTimeoutException e) {
-                retries++; // retry by timeout
+                retries++; // retry bei timeout
             } catch (Exception e) {
                 retries++; // retry wenn fehler beim parsen oder an anderer stelle auftritt
             }
