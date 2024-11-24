@@ -119,15 +119,17 @@ public class CPProtocol extends Protocol {
                     if(successStatus.equals("ok")){
                         return responseMsg;
                     } else if(successStatus.equals("error")){
-                        retries++;
+                        break;
                     }
                 }
-            } catch (Exception e){
-                retries++;
+            } catch (SocketTimeoutException e) {
+                retries++; // retry by timeout
+            } catch (Exception e) {
+                retries++; // retry wenn fehler beim parsen oder an anderer stelle auftritt
             }
         }
 
-        return null;
+        throw new CookieTimeoutException();
     }
 
 
