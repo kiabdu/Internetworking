@@ -98,7 +98,7 @@ public class CPProtocol extends Protocol {
     public Msg receive() throws IOException, IWProtocolException {
         // Task 1.2.1: implement receive method
         // 2a: For any command message sent, the client waits at most three seconds
-        Msg in = this.PhyProto.receive(3000);
+        Msg in = this.PhyProto.receive(2000);
         Msg responseMsg = new CPCommandMsg(this.cookie, this.id);
 
         // 2b: if the parser throws an exception, the message shall be silently discarded.
