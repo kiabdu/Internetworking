@@ -97,28 +97,37 @@ public class CPProtocol extends Protocol {
     @Override
     public Msg receive() throws IOException, IWProtocolException {
         // Task 1.2.1: implement receive method
-        // 2a: For any command message sent, the client waits at most three seconds
-        Msg in = this.PhyProto.receive(2000);
-        Msg responseMsg = new CPCommandMsg(this.cookie, this.id);
+        int maxRetries = 2;
+        int retries = 0;
+        Msg in = null;
 
-        // 2b: if the parser throws an exception, the message shall be silently discarded.
-        try {
-            responseMsg = ((CPCommandMsg) responseMsg).parse(in.getData());
-        } catch (Exception e){
-            return null;
+        while (retries < maxRetries) {
+            try {
+                // msg empfangen
+                in = this.PhyProto.receive(CP_TIMEOUT);
+
+                // parsen
+                Msg responseMsg = new CPCommandMsg(this.cookie, this.id);
+                responseMsg = ((CPCommandMsg) responseMsg).parse(in.getData());
+
+                // Check that the response matches the command message by comparing the message id of the received message with id of the sent message
+                String[] responseParts = responseMsg.getData().split("\\s+");
+                int receivedId = Integer.parseInt(responseParts[2]);
+                String successStatus = responseParts[3];
+
+                if(this.id == receivedId){
+                    if(successStatus.equals("ok")){
+                        return responseMsg;
+                    } else if(successStatus.equals("error")){
+                        retries++;
+                    }
+                }
+            } catch (Exception e){
+                retries++;
+            }
         }
 
-        String[] responseParts = responseMsg.getData().split("\\s+");
-        // Check that the response matches the command message by comparing the message id of the received message with id of the sent message
-        assert this.id == Integer.parseInt(responseParts[2]);
-
-        // d. Check if the command server has accepted the command.
-        assert responseParts[3].matches("ok");
-
-        // Task 2.1.1: enhance receive method
-
-        // e. Return to the client appropriately (wtf does this even mean?)
-        return responseMsg;
+        return null;
     }
 
 

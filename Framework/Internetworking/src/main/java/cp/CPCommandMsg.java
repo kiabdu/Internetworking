@@ -54,9 +54,15 @@ public class CPCommandMsg extends CPMsg {
 
         // cp = 0; command_response = 1; id = 2; success = 3; length = 4; [message = 5]; checksum = 5[oder 6]
         String[] responseParts = response.split("\\s+");
-        Long responseChecksum = Long.parseLong(responseParts[responseParts.length - 1]);
+        String responseChecksum = responseParts[responseParts.length - 1];
 
-        if (!responseChecksum.equals(this.checksum.getValue())) {
+        // checksum nochmal zum abgleich berechnen
+        String responseWithoutChecksum = response.substring(response.indexOf(" ") + 1, response.lastIndexOf(" ")).trim();
+        CRC32 calculatedResponseChecksum = calculateChecksum(responseWithoutChecksum);
+        // ohne diesen Part wird mir die checksum ins negative gerechnet, bin nicht klug genug um es zu verstehen, aber so funktionierts
+        String unsignedCalculatedChecksum = toUnsignedChecksumString(calculatedResponseChecksum);
+
+        if (!responseChecksum.equals(unsignedCalculatedChecksum)) {
             throw new IllegalCommandException();
         }
 
@@ -89,19 +95,23 @@ public class CPCommandMsg extends CPMsg {
         String message = isCommandTypeStatus ? responseParts[5] : "";
 
         // Format laut 3.4.: cp⟨WS⟩command_response⟨WS⟩⟨id⟩⟨WS⟩⟨success⟩⟨WS⟩⟨length⟩[⟨WS⟩⟨message⟩]⟨WS⟩⟨checksum⟩
-        commandResponseMsg = COMMAND_RESPONSE_HEADER + responseId + responseSuccess + length + message + responseChecksum;
+        commandResponseMsg = COMMAND_RESPONSE_HEADER + " " + responseId + " " + responseSuccess + " " + length + " " + message + " " + responseChecksum;
         parsedCommandResponseMsg.create(commandResponseMsg);
         return parsedCommandResponseMsg;
     }
 
     protected CRC32 calculateChecksum(String data) {
         CRC32 checksum = new CRC32();
-
-        // checksum für gesamten String außer "CP" berechnen
-        // also alles ab index 2
-        checksum.update(data.substring(CP_HEADER.length()).getBytes());
+        checksum.update(data.getBytes());
 
         return checksum;
+    }
+
+    // ohne diesen Part wird mir die checksum ins negative gerechnet, bin nicht klug genug um es zu verstehen, aber so funktionierts
+    protected String toUnsignedChecksumString(CRC32 checksum){
+        long signedChecksum = checksum.getValue();
+
+        return Long.toUnsignedString(signedChecksum);
     }
 
     public int getCommandId() {
