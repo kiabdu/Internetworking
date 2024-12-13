@@ -36,6 +36,7 @@ public class CPProtocol extends Protocol {
         this.role = cp_role.CLIENT;
         this.cookie = -1;
     }
+
     // Constructor for servers
     public CPProtocol(PhyProtocol phyP, boolean isCookieServer) {
         this.PhyProto = phyP;
@@ -54,13 +55,14 @@ public class CPProtocol extends Protocol {
 
     private static int commandId = 0;
     private static List<Integer> existingCommandIds = new ArrayList<>();
-    private int createCommandId(){
-        if(commandId < 65535){
+
+    private int createCommandId() {
+        if (commandId < 65535) {
             commandId++;
         }
 
-        if(existingCommandIds.contains(commandId)){
-            while(existingCommandIds.contains(commandId)){
+        if (existingCommandIds.contains(commandId)) {
+            while (existingCommandIds.contains(commandId)) {
                 commandId++;
             }
         }
@@ -83,7 +85,7 @@ public class CPProtocol extends Protocol {
 
         // Task 1.2.1: complete send method
         // 1a: legal command
-        if(StringUtils.isBlank(s)){
+        if (StringUtils.isBlank(s)) {
             throw new IllegalMsgException();
         }
 
@@ -101,33 +103,69 @@ public class CPProtocol extends Protocol {
         int retries = 0;
         Msg in = null;
 
+        System.out.println("Receiving message");
 
-        while (retries < maxRetries) {
-            try {
-                // msg empfangen
-                in = this.PhyProto.receive(CP_TIMEOUT);
+        switch (this.role) {
+            case COOKIE -> {
+                while (true) {
+                    Msg receivedMsg;
+                    System.out.println("Entered cookie server loop");
 
-                // parsen
-                Msg responseMsg = new CPCommandMsg(this.cookie, this.id);
-                responseMsg = ((CPCommandMsg) responseMsg).parse(in.getData());
+                    try {
+                        System.out.println("Waiting for message");
+                        receivedMsg = this.PhyProto.receive(CP_TIMEOUT);
+                        String msg = receivedMsg != null ? receivedMsg.getData() : "";
+                        System.out.println(msg + " received");
+                        // bei null überspringen
+                        if (receivedMsg == null) {
+                            continue;
+                        }
 
-                // Check that the response matches the command message by comparing the message id of the received message with id of the sent message
-                String[] responseParts = responseMsg.getData().split("\\s+");
-                int receivedId = Integer.parseInt(responseParts[2]);
-                String successStatus = responseParts[3];
+                        // bei nicht-cp-nachrichten überspringen
+                        if (((PhyConfiguration) receivedMsg.getConfiguration()).getPid() != proto_id.CP) {
+                            continue;
+                        }
 
-                if(this.id == receivedId){
-                    if(successStatus.equals("ok")){
-                        return responseMsg;
-                    } else if(successStatus.equals("error")){
-                        break;
+                        // wenn richtiger header, cookie request verarbeiten
+                        if (msg.matches("cp cookie_request")) {
+                            processCookie(receivedMsg);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
-            } catch (SocketTimeoutException e) {
-                retries++; // retry bei timeout
-            } catch (Exception e) {
-                retries++; // retry wenn fehler beim parsen oder an anderer stelle auftritt
             }
+            case CLIENT -> {
+                while (retries < maxRetries) {
+                    try {
+                        // msg empfangen
+                        in = this.PhyProto.receive(CP_TIMEOUT);
+
+                        // parsen
+                        Msg responseMsg = new CPCommandMsg(this.cookie, this.id);
+                        responseMsg = ((CPCommandMsg) responseMsg).parse(in.getData());
+
+                        // Check that the response matches the command message by comparing the message id of the received message with id of the sent message
+                        String[] responseParts = responseMsg.getData().split("\\s+");
+                        int receivedId = Integer.parseInt(responseParts[2]);
+                        String successStatus = responseParts[3];
+
+                        if (this.id == receivedId) {
+                            if (successStatus.equals("ok")) {
+                                return responseMsg;
+                            } else if (successStatus.equals("error")) {
+                                break;
+                            }
+                        }
+                    } catch (SocketTimeoutException e) {
+                        retries++; // retry bei timeout
+                    } catch (Exception e) {
+                        retries++; // retry wenn fehler beim parsen oder an anderer stelle auftritt
+                    }
+                }
+            }
+            case COMMAND -> System.out.println("do command server stuff");
+            default -> throw new IllegalStateException("Unexpected value: " + this.role);
         }
 
         throw new CookieTimeoutException();
@@ -142,7 +180,7 @@ public class CPProtocol extends Protocol {
 
         boolean waitForResp = true;
         int count = 0;
-        while(waitForResp && count < 3) {
+        while (waitForResp && count < 3) {
             this.PhyProto.send(new String(reqMsg.getDataBytes()), this.PhyConfigCookieServer);
 
             try {
@@ -150,7 +188,7 @@ public class CPProtocol extends Protocol {
                 if (((PhyConfiguration) in.getConfiguration()).getPid() != proto_id.CP)
                     continue;
                 resMsg = ((CPMsg) resMsg).parse(in.getData());
-                if(resMsg instanceof CPCookieResponseMsg)
+                if (resMsg instanceof CPCookieResponseMsg)
                     waitForResp = false;
             } catch (SocketTimeoutException e) {
                 count += 1;
@@ -158,53 +196,50 @@ public class CPProtocol extends Protocol {
             }
         }
 
-        if(count == 3)
+        if (count == 3)
             throw new CookieRequestException();
-        if(resMsg instanceof CPCookieResponseMsg && !((CPCookieResponseMsg) resMsg).getSuccess()) {
+        if (resMsg instanceof CPCookieResponseMsg && !((CPCookieResponseMsg) resMsg).getSuccess()) {
             throw new CookieRequestException();
         }
-         assert resMsg instanceof CPCookieResponseMsg;
-         this.cookie = ((CPCookieResponseMsg)resMsg).getCookie();
+        assert resMsg instanceof CPCookieResponseMsg;
+        this.cookie = ((CPCookieResponseMsg) resMsg).getCookie();
     }
 
     // subtask 2.1.1: The cookie requests shall be processed in a dedicated method
-    private CPCookieResponseMsg processCookie(String msg, PhyConfiguration config){
-        CPCookieResponseMsg responseMsg = new CPCookieResponseMsg();
+    private void processCookie(Msg msg) throws IWProtocolException, IOException {
+        CPCookieResponseMsg responseMsg;
+        PhyConfiguration clientConfiguration = (PhyConfiguration) msg.getConfiguration();
 
         // 2.1.2. b) processing of premature cookie renewal
-        if(cookieMap.containsKey(config)){
+        if (cookieMap.containsKey(clientConfiguration)) {
             /* 2.1.2. b) Should a client be allowed to request a new cookie while the old cookie has not yet expired?
              * design decision:
              * no, when a client requests a cookie while having an active cookie, i dont want other clients to wait longer for the 20 limit queue just because
              * one client renews its cookies before they expire, so I will just return a responsemsg object stating that an active cookie already exists
              */
-            responseMsg.create("you already have an active cookie");
-            return responseMsg;
+            responseMsg = new CPCookieResponseMsg(false);
+            responseMsg.create("ACTIVE_COOKIE_EXISTS");
+            this.PhyProto.send(new String(responseMsg.getDataBytes()), clientConfiguration);
         }
 
         // 2.1.2. a) There shall never be more than 20 entries in the HashMap
-        if(cookieMap.size() <= 20) {
-            // request prüfen
-            try {
-                new CPCookieRequestMsg().parse(msg);
-            } catch (IllegalMsgException e) {
-                throw new RuntimeException(e);
-            }
-
-            // cookie erstellen
-            Cookie cookieForRequest = new Cookie(System.currentTimeMillis(), rnd.nextInt());
-
-            // cookie zum client zuweisen
-            cookieMap.put(config, cookieForRequest);
-
+        if (cookieMap.size() >= 20) {
             // 2.1.2. c) Send an appropriate response message to the client.
-            responseMsg.create("cookie wurde erfolgreich erstellt");
-        } else {
-            // 2.1.2. c) Send an appropriate response message to the client.
-            responseMsg.create("too many cookies, try again later");
+            responseMsg = new CPCookieResponseMsg(false);
+            responseMsg.create("TOO_MANY_COOKIES");
+            this.PhyProto.send(new String(responseMsg.getDataBytes()), clientConfiguration);
         }
 
-        return responseMsg;
+        responseMsg = new CPCookieResponseMsg(true);
+        // cookie erstellen
+        Cookie cookieForRequest = new Cookie(System.currentTimeMillis(), rnd.nextInt());
+
+        // cookie zum client zuweisen
+        cookieMap.put(clientConfiguration, cookieForRequest);
+
+        // 2.1.2. c) Send an appropriate response message to the client.
+        responseMsg.create(String.valueOf(cookieForRequest.getCookieValue()));
+        this.PhyProto.send(new String(responseMsg.getDataBytes()), clientConfiguration);
     }
 }
 
@@ -221,6 +256,8 @@ class Cookie {
         return timeOfCreation;
     }
 
-    public int getCookieValue() { return cookieValue;}
+    public int getCookieValue() {
+        return cookieValue;
+    }
 }
 
