@@ -115,8 +115,10 @@ public class CPProtocol extends Protocol {
                         receivedMsg = this.PhyProto.receive(CP_TIMEOUT);
                         String msg = receivedMsg != null ? receivedMsg.getData() : "";
                         System.out.println(msg + " received");
+
                         // bei null überspringen
                         if (receivedMsg == null) {
+                            System.out.println("WIESO ZUR HÖLLE SPRINGST DU JETZT HIER REIN, DIE MESSAGE IST DOCH NICHT NULL IM DEBUGGER");
                             continue;
                         }
 
@@ -127,6 +129,7 @@ public class CPProtocol extends Protocol {
 
                         // wenn richtiger header, cookie request verarbeiten
                         if (msg.matches("cp cookie_request")) {
+                            System.out.println("Cookie wird gecookt");
                             processCookie(receivedMsg);
                         }
                     } catch (Exception e) {
