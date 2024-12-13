@@ -101,6 +101,7 @@ public class CPProtocol extends Protocol {
         int retries = 0;
         Msg in = null;
 
+
         while (retries < maxRetries) {
             try {
                 // msg empfangen
@@ -164,6 +165,46 @@ public class CPProtocol extends Protocol {
         }
          assert resMsg instanceof CPCookieResponseMsg;
          this.cookie = ((CPCookieResponseMsg)resMsg).getCookie();
+    }
+
+    // subtask 2.1.1: The cookie requests shall be processed in a dedicated method
+    private CPCookieResponseMsg processCookie(String msg, PhyConfiguration config){
+        CPCookieResponseMsg responseMsg = new CPCookieResponseMsg();
+
+        // 2.1.2. b) processing of premature cookie renewal
+        if(cookieMap.containsKey(config)){
+            /* 2.1.2. b) Should a client be allowed to request a new cookie while the old cookie has not yet expired?
+             * design decision:
+             * no, when a client requests a cookie while having an active cookie, i dont want other clients to wait longer for the 20 limit queue just because
+             * one client renews its cookies before they expire, so I will just return a responsemsg object stating that an active cookie already exists
+             */
+            responseMsg.create("you already have an active cookie");
+            return responseMsg;
+        }
+
+        // 2.1.2. a) There shall never be more than 20 entries in the HashMap
+        if(cookieMap.size() <= 20) {
+            // request prüfen
+            try {
+                new CPCookieRequestMsg().parse(msg);
+            } catch (IllegalMsgException e) {
+                throw new RuntimeException(e);
+            }
+
+            // cookie erstellen
+            Cookie cookieForRequest = new Cookie(System.currentTimeMillis(), rnd.nextInt());
+
+            // cookie zum client zuweisen
+            cookieMap.put(config, cookieForRequest);
+
+            // 2.1.2. c) Send an appropriate response message to the client.
+            responseMsg.create("cookie wurde erfolgreich erstellt");
+        } else {
+            // 2.1.2. c) Send an appropriate response message to the client.
+            responseMsg.create("too many cookies, try again later");
+        }
+
+        return responseMsg;
     }
 }
 
