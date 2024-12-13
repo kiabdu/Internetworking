@@ -11,7 +11,6 @@ import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.zip.CRC32;
 
 public class CPProtocol extends Protocol {
     private static final int CP_TIMEOUT = 2000;
@@ -54,7 +53,7 @@ public class CPProtocol extends Protocol {
     }
 
     private static int commandId = 0;
-    private static List<Integer> existingCommandIds = new ArrayList<>();
+    private static final List<Integer> existingCommandIds = new ArrayList<>();
 
     private int createCommandId() {
         if (commandId < 65535) {
@@ -101,7 +100,7 @@ public class CPProtocol extends Protocol {
         // Task 1.2.1: implement receive method
         int maxRetries = 2;
         int retries = 0;
-        Msg in = null;
+        Msg in;
 
         System.out.println("Receiving message");
 
@@ -223,7 +222,7 @@ public class CPProtocol extends Protocol {
         }
 
         // 2.1.2. a) There shall never be more than 20 entries in the HashMap
-        if (cookieMap.size() >= 20) {
+        if (cookieMap.size() >= CP_HASHMAP_SIZE) {
             // 2.1.2. c) Send an appropriate response message to the client.
             responseMsg = new CPCookieResponseMsg(false);
             responseMsg.create("TOO_MANY_COOKIES");
